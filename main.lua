@@ -23,6 +23,15 @@ local top_row_spawn_timer = 0
 local game_over_line_y = nil -- will be set in love.load
 local is_game_over = false
 
+-- Dynamic spawn interval based on score
+local function get_dynamic_spawn_interval()
+	local min_interval = 2
+	local max_interval = constants.TOP_ROW_SPAWN_INTERVAL
+	local score = scoreManager.total or 0
+	-- For every 500 points, reduce interval by 1 second, down to min_interval
+	return math.max(min_interval, max_interval - math.floor(score / 500))
+end
+
 -- ──────────────────────────────────────────────────────────
 function love.load()
 	-- Set up window and background
@@ -61,8 +70,9 @@ function love.update(delta_time)
 	end
 	if not is_game_over then
 		top_row_spawn_timer = top_row_spawn_timer + delta_time
-		if top_row_spawn_timer >= constants.TOP_ROW_SPAWN_INTERVAL then
-			top_row_spawn_timer = top_row_spawn_timer - constants.TOP_ROW_SPAWN_INTERVAL
+		local spawn_interval = get_dynamic_spawn_interval()
+		if top_row_spawn_timer >= spawn_interval then
+			top_row_spawn_timer = top_row_spawn_timer - spawn_interval
 			if grid and physicsWorld then
 				grid:spawnTopRow(physicsWorld)
 			end
