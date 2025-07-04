@@ -1,146 +1,149 @@
+local BARREL_LENGTH = 60
+local BUBBLE_SPEED = 600
+
 local Cannon = {}
 Cannon.__index = Cannon
 
-function Cannon:new(x, y, bubbleColors, world, bubbleRadius, grid)
+function Cannon:new(x, y, bubbleColors, physicsWorld, bubbleRadius, grid)
 	local self = setmetatable({}, Cannon)
 	self.x = x
 	self.y = y
 	self.bubbleColors = bubbleColors
-	self.world = world
+	self.physicsWorld = physicsWorld
 	self.angle = -math.pi / 2
-	self.barrelLength = 60
+	self.barrelLength = BARREL_LENGTH
 	self.bubbleRadius = bubbleRadius
 	self.currentColor = bubbleColors[math.random(#bubbleColors)]
 	self.nextColor = bubbleColors[math.random(#bubbleColors)]
-	self.bubble = nil
+	self.activeBubble = nil
 	self.grid = grid
 	return self
 end
 
-function Cannon:loadBubble()
+function Cannon:loadNextBubble()
 	self.currentColor = self.nextColor
 	self.nextColor = self.bubbleColors[math.random(#self.bubbleColors)]
 end
 
-function Cannon:update(dt)
-	local mx, my = love.mouse.getPosition()
-	self.angle = math.atan2(my - self.y, mx - self.x)
-	if self.bubble then
-		local W = love.graphics.getWidth()
-		local r = self.bubbleRadius
-		local prevX, prevY = self.bubble.x, self.bubble.y
-		self.bubble.x = self.bubble.x + self.bubble.vx * dt
-		self.bubble.y = self.bubble.y + self.bubble.vy * dt
-		if self.bubble.x - r < 0 then
-			self.bubble.vx = -self.bubble.vx
-			self.bubble.x = r
-		elseif self.bubble.x + r > W then
-			self.bubble.vx = -self.bubble.vx
-			self.bubble.x = W - r
+function Cannon:update(deltaTime)
+	local mouseX, mouseY = love.mouse.getPosition()
+	self.angle = math.atan2(mouseY - self.y, mouseX - self.x)
+	if self.activeBubble then
+		local windowWidth = love.graphics.getWidth()
+		local radius = self.bubbleRadius
+		local previousX, previousY = self.activeBubble.x, self.activeBubble.y
+		self.activeBubble.x = self.activeBubble.x + self.activeBubble.vx * deltaTime
+		self.activeBubble.y = self.activeBubble.y + self.activeBubble.vy * deltaTime
+		if self.activeBubble.x - radius < 0 then
+			self.activeBubble.vx = -self.activeBubble.vx
+			self.activeBubble.x = radius
+		elseif self.activeBubble.x + radius > windowWidth then
+			self.activeBubble.vx = -self.activeBubble.vx
+			self.activeBubble.x = windowWidth - radius
 		end
 
 		-- Stepwise collision detection to prevent tunneling
-		local steps = math.ceil(math.max(math.abs(self.bubble.x - prevX), math.abs(self.bubble.y - prevY)) / (r * 0.5))
+		local steps = math.ceil(
+			math.max(math.abs(self.activeBubble.x - previousX), math.abs(self.activeBubble.y - previousY))
+				/ (radius * 0.5)
+		)
 		for i = 1, steps do
 			local t = i / steps
-			local ix = prevX + (self.bubble.x - prevX) * t
-			local iy = prevY + (self.bubble.y - prevY) * t
-			local q, row = self.grid:pixelToAxial(ix, iy)
-			if self.grid.bubbles[row] and self.grid.bubbles[row][q] then
-				local cx, cy = self.grid:axialToPixel(q, row)
-				if (ix - cx) ^ 2 + (iy - cy) ^ 2 <= (2 * r) ^ 2 then
-					-- Parity-aware neighbor search
-					local function getNeighbors(qq, rr)
-						if qq % 2 == 0 then
+			local interpolatedX = previousX + (self.activeBubble.x - previousX) * t
+			local interpolatedY = previousY + (self.activeBubble.y - previousY) * t
+			local column, row = self.grid:pixelToAxial(interpolatedX, interpolatedY)
+			if self.grid.bubbles[row] and self.grid.bubbles[row][column] then
+				local cellX, cellY = self.grid:axialToPixel(column, row)
+				if (interpolatedX - cellX) ^ 2 + (interpolatedY - cellY) ^ 2 <= (2 * radius) ^ 2 then
+					local function getNeighbors(col, rw)
+						if col % 2 == 0 then
 							return {
-								{ qq + 1, rr },
-								{ qq, rr + 1 },
-								{ qq - 1, rr },
-								{ qq - 1, rr - 1 },
-								{ qq, rr - 1 },
-								{ qq + 1, rr - 1 },
+								{ col + 1, rw },
+								{ col, rw + 1 },
+								{ col - 1, rw },
+								{ col - 1, rw - 1 },
+								{ col, rw - 1 },
+								{ col + 1, rw - 1 },
 							}
 						else
 							return {
-								{ qq + 1, rr },
-								{ qq + 1, rr + 1 },
-								{ qq, rr + 1 },
-								{ qq - 1, rr + 1 },
-								{ qq - 1, rr },
-								{ qq, rr - 1 },
+								{ col + 1, rw },
+								{ col + 1, rw + 1 },
+								{ col, rw + 1 },
+								{ col - 1, rw + 1 },
+								{ col - 1, rw },
+								{ col, rw - 1 },
 							}
 						end
 					end
-					local attachQ, attachR = nil, nil
-					for _, nbr in ipairs(getNeighbors(q, row)) do
-						local nq, nr = nbr[1], nbr[2]
-						if self.grid.bubbles[nr] and not self.grid.bubbles[nr][nq] then
-							attachQ, attachR = nq, nr
+					local attachColumn, attachRow = nil, nil
+					for _, neighbor in ipairs(getNeighbors(column, row)) do
+						local neighborColumn, neighborRow = neighbor[1], neighbor[2]
+						if self.grid.bubbles[neighborRow] and not self.grid.bubbles[neighborRow][neighborColumn] then
+							attachColumn, attachRow = neighborColumn, neighborRow
 							break
 						end
 					end
-					if not attachQ or not attachR then
-						-- If no empty neighbor, snap to nearest empty cell
-						local minDist, minQ, minR = math.huge, nil, nil
-						for rr = 0, self.grid.rows - 1 do
-							for qq = 0, self.grid.cols - 1 do
-								if not self.grid.bubbles[rr][qq] then
-									local cx2, cy2 = self.grid:axialToPixel(qq, rr)
-									local dist = (ix - cx2) ^ 2 + (iy - cy2) ^ 2
+					if not attachColumn or not attachRow then
+						local minDist, minColumn, minRow = math.huge, nil, nil
+						for rowIndex = 0, self.grid.rows - 1 do
+							for columnIndex = 0, self.grid.cols - 1 do
+								if not self.grid.bubbles[rowIndex][columnIndex] then
+									local cellX2, cellY2 = self.grid:axialToPixel(columnIndex, rowIndex)
+									local dist = (interpolatedX - cellX2) ^ 2 + (interpolatedY - cellY2) ^ 2
 									if dist < minDist then
 										minDist = dist
-										minQ, minR = qq, rr
+										minColumn, minRow = columnIndex, rowIndex
 									end
 								end
 							end
 						end
-						attachQ, attachR = minQ, minR
+						attachColumn, attachRow = minColumn, minRow
 					end
-					if attachQ and attachR then
-						self.grid.bubbles[attachR][attachQ] = self.bubble.color
-						local popped = self.grid:checkAndRemoveMatches(attachQ, attachR, self.world)
-						if popped and popped > 0 and _G.score then
-							_G.score = _G.score + popped * 10
+					if attachColumn and attachRow then
+						self.grid.bubbles[attachRow][attachColumn] = self.activeBubble.color
+						local popped = self.grid:checkAndRemoveMatches(attachColumn, attachRow, self.physicsWorld)
+						if popped and popped > 0 and _G.SCORE then
+							_G.SCORE = _G.SCORE + popped * 10
 						end
-						self.bubble = nil
-						self:loadBubble()
+						self.activeBubble = nil
+						self:loadNextBubble()
 					end
 					return
 				end
 			end
 		end
 		-- Top row snap
-		if self.bubble and self.bubble.y - r <= self.grid.originY then
-			local q, row = self.grid:pixelToAxial(self.bubble.x, self.bubble.y)
-			if not self.grid.bubbles[row][q] then
-				self.grid.bubbles[row][q] = self.bubble.color
-				local popped = self.grid:checkAndRemoveMatches(q, row, self.world)
-				if popped and popped > 0 and _G.score then
-					_G.score = _G.score + popped * 10
+		if self.activeBubble and self.activeBubble.y - radius <= self.grid.originY then
+			local column, row = self.grid:pixelToAxial(self.activeBubble.x, self.activeBubble.y)
+			if not self.grid.bubbles[row][column] then
+				self.grid.bubbles[row][column] = self.activeBubble.color
+				local popped = self.grid:checkAndRemoveMatches(column, row, self.physicsWorld)
+				if popped and popped > 0 and _G.SCORE then
+					_G.SCORE = _G.SCORE + popped * 10
 				end
-				self.bubble = nil
-				self:loadBubble()
+				self.activeBubble = nil
+				self:loadNextBubble()
 			end
 		end
-		if self.bubble and self.bubble.y + r < 0 then
-			self.bubble = nil
-			self:loadBubble()
+		if self.activeBubble and self.activeBubble.y + radius < 0 then
+			self.activeBubble = nil
+			self:loadNextBubble()
 		end
 	end
 end
 
 function Cannon:shoot()
-	if self.bubble then
+	if self.activeBubble then
 		return
 	end
-	local bx = self.x + math.cos(self.angle) * self.barrelLength
-	local by = self.y + math.sin(self.angle) * self.barrelLength
-	local speed = 600
-	self.bubble = {
-		x = bx,
-		y = by,
-		vx = math.cos(self.angle) * speed,
-		vy = math.sin(self.angle) * speed,
+	local bubbleStartX = self.x + math.cos(self.angle) * self.barrelLength
+	local bubbleStartY = self.y + math.sin(self.angle) * self.barrelLength
+	self.activeBubble = {
+		x = bubbleStartX,
+		y = bubbleStartY,
+		vx = math.cos(self.angle) * BUBBLE_SPEED,
+		vy = math.sin(self.angle) * BUBBLE_SPEED,
 		color = self.currentColor,
 	}
 end
@@ -157,22 +160,22 @@ function Cannon:draw()
 	love.graphics.setLineWidth(1)
 
 	-- Guide line
-	local W, H = love.graphics.getWidth(), love.graphics.getHeight()
-	local r = self.bubbleRadius
+	local windowWidth, windowHeight = love.graphics.getWidth(), love.graphics.getHeight()
+	local radius = self.bubbleRadius
 	local x = self.x + math.cos(self.angle) * self.barrelLength
 	local y = self.y + math.sin(self.angle) * self.barrelLength
 	local vx = math.cos(self.angle)
 	local vy = math.sin(self.angle)
-	local speed = 600
+	local speed = BUBBLE_SPEED
 	vx = vx * speed
 	vy = vy * speed
 	local points = { x, y }
 	for i = 1, 3 do
 		local t = nil
 		if vx < 0 then
-			t = (r - x) / vx
+			t = (radius - x) / vx
 		elseif vx > 0 then
-			t = (W - r - x) / vx
+			t = (windowWidth - radius - x) / vx
 		end
 		if not t or t < 0 then
 			break
@@ -192,11 +195,11 @@ function Cannon:draw()
 	love.graphics.circle("fill", self.x, self.y, self.bubbleRadius)
 	love.graphics.setColor(0.2, 0.2, 0.2)
 	love.graphics.circle("line", self.x, self.y, self.bubbleRadius)
-	if self.bubble then
-		love.graphics.setColor(self.bubble.color[1], self.bubble.color[2], self.bubble.color[3])
-		love.graphics.circle("fill", self.bubble.x, self.bubble.y, self.bubbleRadius)
+	if self.activeBubble then
+		love.graphics.setColor(self.activeBubble.color[1], self.activeBubble.color[2], self.activeBubble.color[3])
+		love.graphics.circle("fill", self.activeBubble.x, self.activeBubble.y, self.bubbleRadius)
 		love.graphics.setColor(0.2, 0.2, 0.2)
-		love.graphics.circle("line", self.bubble.x, self.bubble.y, self.bubbleRadius)
+		love.graphics.circle("line", self.activeBubble.x, self.activeBubble.y, self.bubbleRadius)
 	end
 end
 
