@@ -219,13 +219,15 @@ function Grid:checkAndRemoveMatches(column, row, physicsWorld)
 		return
 	end
 
-	-- Immediately remove the matched group from the grid
+	-- Remove the matched group from the grid for connectivity check only (not visually)
+	local temp_removed = {}
 	for _, pos in ipairs(group) do
 		local col, row = pos[1], pos[2]
+		temp_removed[#temp_removed + 1] = { col, row, self.bubbles[row][col] }
 		self.bubbles[row][col] = nil
 	end
 
-	-- 2. Find floating bubbles (after group is removed)
+	-- Find floating bubbles (after group is removed)
 	local connected = {}
 	for rowIndex = 0, self.rows - 1 do
 		connected[rowIndex] = {}
@@ -261,8 +263,21 @@ function Grid:checkAndRemoveMatches(column, row, physicsWorld)
 		end
 	end
 
-	self.popping_queue =
-		{ group = group, step = 1, timer = 0, floating = floating, current_delay = constants.POP_DELAY, popped = 0 }
+	-- Restore the matched group to the grid (so they remain visible until popped)
+	for _, info in ipairs(temp_removed) do
+		local col, row, color = info[1], info[2], info[3]
+		self.bubbles[row][col] = color
+	end
+
+	-- Queue both matched group and floaters for sequential popping
+	self.popping_queue = {
+		group = group,
+		floating = floating,
+		step = 1,
+		timer = 0,
+		current_delay = constants.POP_DELAY,
+		popped = 0,
+	}
 	return #group + #floating
 end
 

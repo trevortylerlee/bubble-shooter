@@ -141,7 +141,7 @@ end
 -- Shoot a bubble if none is active
 function Cannon:shoot()
 	if self.activeBubble then
-		return
+		return false
 	end
 	local bubble_start_x = self.x + math.cos(self.angle) * self.barrelLength
 	local bubble_start_y = self.y + math.sin(self.angle) * self.barrelLength
@@ -152,6 +152,7 @@ function Cannon:shoot()
 		vy = math.sin(self.angle) * constants.BUBBLE_SPEED,
 		color = self.currentColor,
 	}
+	return true
 end
 
 -- Draw the cannon and active bubble

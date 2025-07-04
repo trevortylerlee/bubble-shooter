@@ -176,7 +176,8 @@ end
 
 function love.mousepressed(x, y, button)
 	if button == 1 and cannon and (not grid or not grid.popping_queue) then
-		cannon:shoot()
-		SOUNDS.shoot:play()
+		if cannon:shoot() then
+			SOUNDS.shoot:play()
+		end
 	end
 end
