@@ -26,6 +26,9 @@ function Cannon:loadNextBubble()
 end
 
 function Cannon:update(deltaTime)
+	if self.grid and self.grid.popping_queue then
+		return
+	end
 	local mouseX, mouseY = love.mouse.getPosition()
 	self.angle = math.atan2(mouseY - self.y, mouseX - self.x)
 	if self.activeBubble then

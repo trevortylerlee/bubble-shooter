@@ -4,6 +4,10 @@ local COLOR_OPTIONS = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 }, { 1, 1, 0 }, { 1,
 local Grid = {}
 Grid.__index = Grid
 
+-- Popping animation config
+local POP_DELAY = 0.08 -- initial seconds between each bubble pop
+local POP_ACCEL = 0.7 -- exponential speed-up factor per pop
+
 function Grid.new(columnCount, rowCount, bubbleRadius)
 	local self = setmetatable({}, Grid)
 	self.cols = columnCount
@@ -28,6 +32,7 @@ function Grid.new(columnCount, rowCount, bubbleRadius)
 	end
 
 	self.score_popups = {}
+	self.popping_queue = nil -- {group=..., step=1, timer=0, floating=...}
 
 	-- Grid dimensions in pixels (for odd-q layout)
 	local gridWidth = (columnCount - 1) * (1.5 * bubbleRadius) + bubbleRadius * 2
@@ -85,7 +90,69 @@ function Grid:pixelToAxial(x, y)
 	return self:findNearestCell(x, y)
 end
 
+function Grid:updatePopping(deltaTime, physicsWorld)
+	if not self.popping_queue then
+		return false, 0, false
+	end
+	self.popping_queue.timer = self.popping_queue.timer + deltaTime
+	local delay = self.popping_queue.current_delay or POP_DELAY
+	if self.popping_queue.timer >= delay then
+		self.popping_queue.timer = self.popping_queue.timer - delay
+		self.popping_queue.current_delay = (delay or POP_DELAY) * POP_ACCEL
+		local group = self.popping_queue.group
+		if self.popping_queue.step <= #group then
+			local pos = group[self.popping_queue.step]
+			local groupColumn, groupRow = pos[1], pos[2]
+			self.bubbles[groupRow][groupColumn] = nil
+			if
+				physicsWorld
+				and physicsWorld.bubbleBodies
+				and physicsWorld.bubbleBodies[groupRow]
+				and physicsWorld.bubbleBodies[groupRow][groupColumn]
+			then
+				physicsWorld.bubbleBodies[groupRow][groupColumn]:destroy()
+				physicsWorld.bubbleBodies[groupRow][groupColumn] = nil
+			end
+			self:addScorePopup(groupColumn, groupRow, 10)
+			if _G.SCORE then
+				_G.SCORE = _G.SCORE + 10
+			end
+			self.popping_queue.popped = (self.popping_queue.popped or 0) + 1
+			self.popping_queue.step = self.popping_queue.step + 1
+		else
+			-- Done popping group, now pop floating if any
+			if self.popping_queue.floating and #self.popping_queue.floating > 0 then
+				local pos = table.remove(self.popping_queue.floating, 1)
+				local groupColumn, groupRow = pos[1], pos[2]
+				self.bubbles[groupRow][groupColumn] = nil
+				if
+					physicsWorld
+					and physicsWorld.bubbleBodies
+					and physicsWorld.bubbleBodies[groupRow]
+					and physicsWorld.bubbleBodies[groupRow][groupColumn]
+				then
+					physicsWorld.bubbleBodies[groupRow][groupColumn]:destroy()
+					physicsWorld.bubbleBodies[groupRow][groupColumn] = nil
+				end
+				self:addScorePopup(groupColumn, groupRow, 10)
+				if _G.SCORE then
+					_G.SCORE = _G.SCORE + 10
+				end
+				self.popping_queue.popped = (self.popping_queue.popped or 0) + 1
+			else
+				local total_popped = self.popping_queue.popped or 0
+				self.popping_queue = nil -- done
+				return false, total_popped, true -- just finished
+			end
+		end
+	end
+	return self.popping_queue ~= nil, self.popping_queue and (self.popping_queue.popped or 0) or 0, false
+end
+
 function Grid:checkAndRemoveMatches(column, row, physicsWorld)
+	if self.popping_queue then
+		return
+	end
 	local function inBounds(col, rw)
 		return col >= 0 and col < self.cols and rw >= 0 and rw < self.rows
 	end
@@ -148,32 +215,17 @@ function Grid:checkAndRemoveMatches(column, row, physicsWorld)
 		end
 	end
 
-	local removed = false
-	local popped = 0
-	if #group >= 3 then
-		for _, pos in ipairs(group) do
-			local groupColumn, groupRow = pos[1], pos[2]
-			self.bubbles[groupRow][groupColumn] = nil
-			if
-				physicsWorld
-				and physicsWorld.bubbleBodies
-				and physicsWorld.bubbleBodies[groupRow]
-				and physicsWorld.bubbleBodies[groupRow][groupColumn]
-			then
-				physicsWorld.bubbleBodies[groupRow][groupColumn]:destroy()
-				physicsWorld.bubbleBodies[groupRow][groupColumn] = nil
-			end
-			self:addScorePopup(groupColumn, groupRow, 10)
-			popped = popped + 1
-		end
-		removed = true
-	end
-
-	if not removed then
+	if #group < 3 then
 		return
 	end
 
-	-- 2. Flood fill from top row to mark connected bubbles
+	-- Immediately remove the matched group from the grid
+	for _, pos in ipairs(group) do
+		local col, row = pos[1], pos[2]
+		self.bubbles[row][col] = nil
+	end
+
+	-- 2. Find floating bubbles (after group is removed)
 	local connected = {}
 	for rowIndex = 0, self.rows - 1 do
 		connected[rowIndex] = {}
@@ -200,27 +252,18 @@ function Grid:checkAndRemoveMatches(column, row, physicsWorld)
 			end
 		end
 	end
-
-	-- 3. Remove floating bubbles
+	local floating = {}
 	for rowIndex = 0, self.rows - 1 do
 		for columnIndex = 0, self.cols - 1 do
 			if self.bubbles[rowIndex][columnIndex] and not connected[rowIndex][columnIndex] then
-				self.bubbles[rowIndex][columnIndex] = nil
-				if
-					physicsWorld
-					and physicsWorld.bubbleBodies
-					and physicsWorld.bubbleBodies[rowIndex]
-					and physicsWorld.bubbleBodies[rowIndex][columnIndex]
-				then
-					physicsWorld.bubbleBodies[rowIndex][columnIndex]:destroy()
-					physicsWorld.bubbleBodies[rowIndex][columnIndex] = nil
-				end
-				self:addScorePopup(columnIndex, rowIndex, 10)
-				popped = popped + 1
+				table.insert(floating, { columnIndex, rowIndex })
 			end
 		end
 	end
-	return popped
+
+	self.popping_queue =
+		{ group = group, step = 1, timer = 0, floating = floating, current_delay = POP_DELAY, popped = 0 }
+	return #group + #floating
 end
 
 function Grid:getPresentColors()

@@ -43,6 +43,10 @@ function love.load()
 	physicsWorld:addCollisionClass("CannonBubble")
 
 	SCORE = 0
+
+	SOUNDS = {}
+	SOUNDS.pop = love.audio.newSource("sounds/pop.mp3", "static")
+	SOUNDS.shoot = love.audio.newSource("sounds/blip.wav", "static")
 end
 
 function love.update(deltaTime)
@@ -76,7 +80,17 @@ function love.update(deltaTime)
 		end
 	end
 
-	if cannon then
+	-- Sequential popping
+	local popping, _, just_finished = false, 0, false
+	if grid and grid.updatePopping then
+		popping, _, just_finished = grid:updatePopping(deltaTime, physicsWorld)
+	end
+
+	if just_finished and love.graphics and love.graphics.present then
+		love.graphics.present() -- force redraw for immediate visual update
+	end
+
+	if cannon and not popping then
 		cannon:update(deltaTime)
 		if cannon.handleWallBounce then
 			cannon:handleWallBounce()
@@ -160,7 +174,8 @@ function love.draw()
 end
 
 function love.mousepressed(x, y, button)
-	if button == 1 and cannon then
+	if button == 1 and cannon and (not grid or not grid.popping_queue) then
 		cannon:shoot()
+		SOUNDS.shoot:play()
 	end
 end
