@@ -32,4 +32,12 @@ constants.GAME_OVER_LINE_RATIO = 1 / 6 -- Fraction of window height from bottom
 constants.SCORE_POPUP_DURATION = 0.7
 constants.SCORE_POPUP_VALUE = 10
 
+-- Scoring configuration
+constants.BASE_POINTS = 10
+constants.GROUP_BONUS_PER_BUBBLE = 5 -- (groupSize - 3) * this
+constants.FALLING_BONUS = 2 * constants.BASE_POINTS
+constants.FAST_SHOT_WINDOW = 2 -- seconds
+constants.SPEED_BONUS = 15
+constants.COMBO_MULTIPLIER_STEP = 0.1 -- Each combo increases multiplier by this
+
 return constants

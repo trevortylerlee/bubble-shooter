@@ -10,12 +10,15 @@ local Grid = require("grid")
 local grid = nil
 local Cannon = require("cannon")
 local cannon = nil
+local scoreManager = require("scoreManager")
+local lastShotTime = 0
+local lastComboStreak = 0
+local lastComboDisplayTimer = 0
+local lastComboDisplayX, lastComboDisplayY = nil, nil
 
 local top_row_spawn_timer = 0
 local game_over_line_y = nil -- will be set in love.load
 local is_game_over = false
-
-SCORE = 0
 
 -- ──────────────────────────────────────────────────────────
 function love.load()
@@ -82,13 +85,29 @@ function love.update(delta_time)
 	end
 
 	-- Sequential popping
-	local popping, _, just_finished = false, 0, false
+	local popping, shotScore, just_finished, comboStreak, groupSize, fallenCount = false, 0, false, nil, nil, nil
 	if grid and grid.updatePopping then
-		popping, _, just_finished = grid:updatePopping(delta_time, physicsWorld)
+		popping, shotScore, just_finished, comboStreak, groupSize, fallenCount =
+			grid:updatePopping(delta_time, physicsWorld)
 	end
 
 	if just_finished and love.graphics and love.graphics.present then
 		love.graphics.present() -- force redraw for immediate visual update
+		if shotScore and shotScore > 0 then
+			lastComboStreak = comboStreak or 0
+			lastComboDisplayTimer = 0.8
+			if cannon then
+				lastComboDisplayX = cannon.x
+				lastComboDisplayY = cannon.y - 40
+			end
+		end
+	end
+
+	if lastComboDisplayTimer and lastComboDisplayTimer > 0 then
+		lastComboDisplayTimer = lastComboDisplayTimer - delta_time
+		if lastComboDisplayTimer < 0 then
+			lastComboDisplayTimer = 0
+		end
 	end
 
 	if cannon and not popping then
@@ -119,6 +138,19 @@ function love.draw()
 	love.graphics.setColor(0.6, 0.6, 0.6)
 
 	if grid then
+		local flash_group = nil
+		if
+			grid.popping_queue
+			and grid.popping_queue.flash
+			and grid.popping_queue.flash_timer
+			and grid.popping_queue.flash_timer > 0
+		then
+			flash_group = {}
+			for _, pos in ipairs(grid.popping_queue.flash_group or {}) do
+				flash_group[pos[2]] = flash_group[pos[2]] or {}
+				flash_group[pos[2]][pos[1]] = true
+			end
+		end
 		for row = 0, (grid.rows or 0) - 1 do
 			for column = 0, (grid.cols or 0) - 1 do
 				local bubble = grid.bubbles and grid.bubbles[row] and grid.bubbles[row][column]
@@ -126,7 +158,11 @@ function love.draw()
 					local color = bubble
 					local x, y = grid:axialToPixel(column, row)
 					if grid.r then
-						love.graphics.setColor(color[1], color[2], color[3])
+						if flash_group and flash_group[row] and flash_group[row][column] then
+							love.graphics.setColor(1, 1, 0)
+						else
+							love.graphics.setColor(color[1], color[2], color[3])
+						end
 						love.graphics.circle("fill", x, y, grid.r - 2)
 						love.graphics.setColor(0.2, 0.2, 0.2)
 						love.graphics.circle("line", x, y, grid.r - 2)
@@ -163,14 +199,20 @@ function love.draw()
 	end
 
 	love.graphics.setColor(1, 1, 1)
-	love.graphics.print("Score: " .. tostring(SCORE), 20, 20)
+	love.graphics.print("Score: " .. tostring(scoreManager.total), 20, 20)
 
 	-- Draw score popups
 	if grid and grid.score_popups then
 		for _, popup in ipairs(grid.score_popups) do
 			love.graphics.setColor(1, 1, 0, popup.alpha)
-			love.graphics.print("10", popup.x - 8, popup.y - 12)
+			love.graphics.print(tostring(popup.value or 0), popup.x - 8, popup.y - 12)
 		end
+	end
+
+	-- Combo visual feedback
+	if lastComboStreak and lastComboStreak >= 3 and lastComboDisplayTimer and lastComboDisplayTimer > 0 then
+		love.graphics.setColor(1, 0.8, 0, 0.8 * lastComboDisplayTimer)
+		love.graphics.print("Combo ×" .. tostring(lastComboStreak) .. "!", 20, 50, 0, 2, 2)
 	end
 end
 
@@ -178,6 +220,10 @@ function love.mousepressed(x, y, button)
 	if button == 1 and cannon and (not grid or not grid.popping_queue) then
 		if cannon:shoot() then
 			SOUNDS.shoot:play()
+			if grid and grid.popping_queue then
+				grid.popping_queue.timeSinceLastShot = love.timer.getTime() - (lastShotTime or 0)
+			end
+			lastShotTime = love.timer.getTime()
 		end
 	end
 end

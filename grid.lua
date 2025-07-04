@@ -1,4 +1,5 @@
 local constants = require("constants")
+local scoreManager = require("scoreManager")
 
 local Grid = {}
 Grid.__index = Grid
@@ -92,7 +93,14 @@ end
 
 function Grid:updatePopping(delta_time, physics_world)
 	if not self.popping_queue then
-		return false, 0, false
+		return false, 0, false, nil, nil
+	end
+	if self.popping_queue.flash and self.popping_queue.flash_timer and self.popping_queue.flash_timer > 0 then
+		self.popping_queue.flash_timer = self.popping_queue.flash_timer - delta_time
+		if self.popping_queue.flash_timer <= 0 then
+			self.popping_queue.flash_timer = 0
+		end
+		return true, 0, false, nil, nil, nil
 	end
 	self.popping_queue.timer = self.popping_queue.timer + delta_time
 	local delay = self.popping_queue.current_delay or constants.POP_DELAY
@@ -113,10 +121,7 @@ function Grid:updatePopping(delta_time, physics_world)
 				physics_world.bubbleBodies[group_row][group_col]:destroy()
 				physics_world.bubbleBodies[group_row][group_col] = nil
 			end
-			self:addScorePopup(group_col, group_row, constants.SCORE_POPUP_VALUE)
-			if _G.SCORE then
-				_G.SCORE = _G.SCORE + constants.SCORE_POPUP_VALUE
-			end
+			self:addScorePopup(group_col, group_row, nil) -- value will be set after scoring
 			self.popping_queue.popped = (self.popping_queue.popped or 0) + 1
 			self.popping_queue.step = self.popping_queue.step + 1
 		else
@@ -134,19 +139,25 @@ function Grid:updatePopping(delta_time, physics_world)
 					physics_world.bubbleBodies[group_row][group_col]:destroy()
 					physics_world.bubbleBodies[group_row][group_col] = nil
 				end
-				self:addScorePopup(group_col, group_row, constants.SCORE_POPUP_VALUE)
-				if _G.SCORE then
-					_G.SCORE = _G.SCORE + constants.SCORE_POPUP_VALUE
-				end
+				self:addScorePopup(group_col, group_row, nil)
 				self.popping_queue.popped = (self.popping_queue.popped or 0) + 1
 			else
-				local total_popped = self.popping_queue.popped or 0
+				local groupSize = #self.popping_queue.group
+				local fallenCount = self.popping_queue.floating and #self.popping_queue.floating or 0
+				local timeSinceLastShot = self.popping_queue.timeSinceLastShot
+				local shotScore, comboStreak = scoreManager.addShotScore(groupSize, fallenCount, timeSinceLastShot)
+				-- Update score popups with actual value
+				for _, popup in ipairs(self.score_popups) do
+					if not popup.value or popup.value == 10 then
+						popup.value = shotScore
+					end
+				end
 				self.popping_queue = nil -- done
-				return false, total_popped, true -- just finished
+				return false, shotScore, true, comboStreak, groupSize, fallenCount
 			end
 		end
 	end
-	return self.popping_queue ~= nil, self.popping_queue and (self.popping_queue.popped or 0) or 0, false
+	return self.popping_queue ~= nil, 0, false, nil, nil, nil
 end
 
 function Grid:checkAndRemoveMatches(column, row, physicsWorld)
@@ -270,6 +281,10 @@ function Grid:checkAndRemoveMatches(column, row, physicsWorld)
 	end
 
 	-- Queue both matched group and floaters for sequential popping
+	local flash = false
+	if #group >= 6 then
+		flash = true
+	end
 	self.popping_queue = {
 		group = group,
 		floating = floating,
@@ -277,6 +292,9 @@ function Grid:checkAndRemoveMatches(column, row, physicsWorld)
 		timer = 0,
 		current_delay = constants.POP_DELAY,
 		popped = 0,
+		flash = flash,
+		flash_timer = flash and 0.15 or 0,
+		flash_group = flash and group or nil,
 	}
 	return #group + #floating
 end
