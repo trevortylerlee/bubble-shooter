@@ -27,6 +27,8 @@ function Grid.new(columnCount, rowCount, bubbleRadius)
 		end
 	end
 
+	self.score_popups = {}
+
 	-- Grid dimensions in pixels (for odd-q layout)
 	local gridWidth = (columnCount - 1) * (1.5 * bubbleRadius) + bubbleRadius * 2
 	local gridHeight = self.vstep * rowCount + self.vstep * 0.5
@@ -161,6 +163,7 @@ function Grid:checkAndRemoveMatches(column, row, physicsWorld)
 				physicsWorld.bubbleBodies[groupRow][groupColumn]:destroy()
 				physicsWorld.bubbleBodies[groupRow][groupColumn] = nil
 			end
+			self:addScorePopup(groupColumn, groupRow, 10)
 			popped = popped + 1
 		end
 		removed = true
@@ -212,6 +215,7 @@ function Grid:checkAndRemoveMatches(column, row, physicsWorld)
 					physicsWorld.bubbleBodies[rowIndex][columnIndex]:destroy()
 					physicsWorld.bubbleBodies[rowIndex][columnIndex] = nil
 				end
+				self:addScorePopup(columnIndex, rowIndex, 10)
 				popped = popped + 1
 			end
 		end
@@ -235,6 +239,11 @@ function Grid:getPresentColors()
 		end
 	end
 	return present
+end
+
+function Grid:addScorePopup(column, row, value)
+	local x, y = self:axialToPixel(column, row)
+	table.insert(self.score_popups, { x = x, y = y, value = value or 10, timer = 0, alpha = 1 })
 end
 
 return Grid

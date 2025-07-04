@@ -82,6 +82,21 @@ function love.update(deltaTime)
 			cannon:handleWallBounce()
 		end
 	end
+
+	-- Update score popups
+	if grid and grid.score_popups then
+		local to_remove = {}
+		for i, popup in ipairs(grid.score_popups) do
+			popup.timer = popup.timer + deltaTime
+			popup.alpha = 1 - (popup.timer / 0.7)
+			if popup.alpha <= 0 then
+				table.insert(to_remove, i)
+			end
+		end
+		for i = #to_remove, 1, -1 do
+			table.remove(grid.score_popups, to_remove[i])
+		end
+	end
 end
 
 function love.draw()
@@ -134,6 +149,14 @@ function love.draw()
 
 	love.graphics.setColor(1, 1, 1)
 	love.graphics.print("Score: " .. tostring(SCORE), 20, 20)
+
+	-- Draw score popups
+	if grid and grid.score_popups then
+		for _, popup in ipairs(grid.score_popups) do
+			love.graphics.setColor(1, 1, 0, popup.alpha)
+			love.graphics.print("10", popup.x - 8, popup.y - 12)
+		end
+	end
 end
 
 function love.mousepressed(x, y, button)
