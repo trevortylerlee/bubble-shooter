@@ -9,7 +9,7 @@ constants.GRID_ROWS = 32
 constants.TOP_ROW_SPAWN_INTERVAL = 10
 
 -- Bubble and color configuration
-constants.NUM_BUBBLE_COLORS = 3
+constants.NUM_BUBBLE_COLORS = 4
 constants.COLOR_OPTIONS = {
 	{ 1, 0, 0 }, -- Red
 	{ 0, 1, 0 }, -- Green

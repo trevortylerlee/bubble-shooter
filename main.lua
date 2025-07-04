@@ -16,6 +16,9 @@ local lastComboStreak = 0
 local lastComboDisplayTimer = 0
 local lastComboDisplayX, lastComboDisplayY = nil, nil
 
+-- Score gain animation state
+local score_gain_animations = {}
+
 local top_row_spawn_timer = 0
 local game_over_line_y = nil -- will be set in love.load
 local is_game_over = false
@@ -100,6 +103,15 @@ function love.update(delta_time)
 				lastComboDisplayX = cannon.x
 				lastComboDisplayY = cannon.y - 40
 			end
+			-- Add score gain animation
+			table.insert(score_gain_animations, {
+				value = shotScore,
+				timer = 0,
+				duration = 1.0,
+				alpha = 1,
+				x = 20, -- align with score
+				y = 44, -- below score (score is at y=20)
+			})
 		end
 	end
 
@@ -131,6 +143,17 @@ function love.update(delta_time)
 			table.remove(grid.score_popups, to_remove[i])
 		end
 	end
+
+	-- Update score gain animations
+	for i = #score_gain_animations, 1, -1 do
+		local anim = score_gain_animations[i]
+		anim.timer = anim.timer + delta_time
+		anim.alpha = 1 - (anim.timer / anim.duration)
+		anim.y = 44 - 20 * (anim.timer / anim.duration) -- float up from below score
+		if anim.alpha <= 0 then
+			table.remove(score_gain_animations, i)
+		end
+	end
 end
 
 function love.draw()
@@ -159,7 +182,7 @@ function love.draw()
 					local x, y = grid:axialToPixel(column, row)
 					if grid.r then
 						if flash_group and flash_group[row] and flash_group[row][column] then
-							love.graphics.setColor(1, 1, 0)
+							love.graphics.setColor(1, 1, 1)
 						else
 							love.graphics.setColor(color[1], color[2], color[3])
 						end
@@ -209,10 +232,16 @@ function love.draw()
 		end
 	end
 
-	-- Combo visual feedback
+	-- Draw score gain animations
+	for _, anim in ipairs(score_gain_animations) do
+		love.graphics.setColor(0, 1, 0, anim.alpha)
+		love.graphics.print("+" .. tostring(anim.value), anim.x, anim.y)
+	end
+
+	-- Combo visual feedback (move below score gain animation)
 	if lastComboStreak and lastComboStreak >= 3 and lastComboDisplayTimer and lastComboDisplayTimer > 0 then
 		love.graphics.setColor(1, 0.8, 0, 0.8 * lastComboDisplayTimer)
-		love.graphics.print("Combo ×" .. tostring(lastComboStreak) .. "!", 20, 50, 0, 2, 2)
+		love.graphics.print("Combo ×" .. tostring(lastComboStreak) .. "!", 20, 68, 0, 2, 2)
 	end
 end
 
