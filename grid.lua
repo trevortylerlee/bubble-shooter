@@ -1,32 +1,32 @@
-local NUM_BUBBLE_COLORS = 3
-local COLOR_OPTIONS = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 }, { 1, 1, 0 }, { 1, 0, 1 }, { 0, 1, 1 } }
+local constants = require("constants")
 
 local Grid = {}
 Grid.__index = Grid
 
 -- Popping animation config
-local POP_DELAY = 0.08 -- initial seconds between each bubble pop
-local POP_ACCEL = 0.7 -- exponential speed-up factor per pop
+local POP_DELAY = constants.POP_DELAY
+local POP_ACCEL = constants.POP_ACCEL
 
-function Grid.new(columnCount, rowCount, bubbleRadius)
+-- Create a new Grid instance
+function Grid.new(column_count, row_count, bubble_radius)
 	local self = setmetatable({}, Grid)
-	self.cols = columnCount
-	self.rows = rowCount
-	self.r = bubbleRadius
-	self.d = bubbleRadius * 2
-	self.vstep = bubbleRadius * math.sqrt(3)
+	self.cols = column_count
+	self.rows = row_count
+	self.r = bubble_radius
+	self.d = bubble_radius * 2
+	self.vstep = bubble_radius * math.sqrt(3)
 
-	local colorOptions = { unpack(COLOR_OPTIONS, 1, NUM_BUBBLE_COLORS) }
+	local color_options = { unpack(constants.COLOR_OPTIONS, 1, constants.NUM_BUBBLE_COLORS) }
 	self.bubbles = {}
-	for rowIndex = 0, rowCount - 1 do
-		self.bubbles[rowIndex] = {}
-		for columnIndex = 0, columnCount - 1 do
-			if columnIndex < 4 or columnIndex >= columnCount - 4 then
-				self.bubbles[rowIndex][columnIndex] = nil
-			elseif rowIndex < 10 then
-				self.bubbles[rowIndex][columnIndex] = colorOptions[math.random(#colorOptions)]
+	for row_index = 0, row_count - 1 do
+		self.bubbles[row_index] = {}
+		for column_index = 0, column_count - 1 do
+			if column_index < 4 or column_index >= column_count - 4 then
+				self.bubbles[row_index][column_index] = nil
+			elseif row_index < 10 then
+				self.bubbles[row_index][column_index] = color_options[math.random(#color_options)]
 			else
-				self.bubbles[rowIndex][columnIndex] = nil
+				self.bubbles[row_index][column_index] = nil
 			end
 		end
 	end
@@ -35,11 +35,11 @@ function Grid.new(columnCount, rowCount, bubbleRadius)
 	self.popping_queue = nil -- {group=..., step=1, timer=0, floating=...}
 
 	-- Grid dimensions in pixels (for odd-q layout)
-	local gridWidth = (columnCount - 1) * (1.5 * bubbleRadius) + bubbleRadius * 2
-	local gridHeight = self.vstep * rowCount + self.vstep * 0.5
+	local grid_width = (column_count - 1) * (1.5 * bubble_radius) + bubble_radius * 2
+	local grid_height = self.vstep * row_count + self.vstep * 0.5
 
-	local windowWidth, windowHeight = love.graphics.getDimensions()
-	self.originX = (windowWidth - gridWidth) / 2
+	local window_width, window_height = love.graphics.getDimensions()
+	self.originX = (window_width - grid_width) / 2
 	self.originY = 0
 
 	return self
@@ -53,7 +53,7 @@ function Grid:axialToPixel(column, row)
 end
 
 function Grid:spawnTopRow(physicsWorld)
-	local colorOptions = { unpack(COLOR_OPTIONS, 1, NUM_BUBBLE_COLORS) }
+	local colorOptions = { unpack(constants.COLOR_OPTIONS, 1, constants.NUM_BUBBLE_COLORS) }
 	local newRow = {}
 	for column = 0, self.cols - 1 do
 		if column < 4 or column >= self.cols - 4 then
@@ -90,32 +90,32 @@ function Grid:pixelToAxial(x, y)
 	return self:findNearestCell(x, y)
 end
 
-function Grid:updatePopping(deltaTime, physicsWorld)
+function Grid:updatePopping(delta_time, physics_world)
 	if not self.popping_queue then
 		return false, 0, false
 	end
-	self.popping_queue.timer = self.popping_queue.timer + deltaTime
-	local delay = self.popping_queue.current_delay or POP_DELAY
+	self.popping_queue.timer = self.popping_queue.timer + delta_time
+	local delay = self.popping_queue.current_delay or constants.POP_DELAY
 	if self.popping_queue.timer >= delay then
 		self.popping_queue.timer = self.popping_queue.timer - delay
-		self.popping_queue.current_delay = (delay or POP_DELAY) * POP_ACCEL
+		self.popping_queue.current_delay = (delay or constants.POP_DELAY) * constants.POP_ACCEL
 		local group = self.popping_queue.group
 		if self.popping_queue.step <= #group then
 			local pos = group[self.popping_queue.step]
-			local groupColumn, groupRow = pos[1], pos[2]
-			self.bubbles[groupRow][groupColumn] = nil
+			local group_col, group_row = pos[1], pos[2]
+			self.bubbles[group_row][group_col] = nil
 			if
-				physicsWorld
-				and physicsWorld.bubbleBodies
-				and physicsWorld.bubbleBodies[groupRow]
-				and physicsWorld.bubbleBodies[groupRow][groupColumn]
+				physics_world
+				and physics_world.bubbleBodies
+				and physics_world.bubbleBodies[group_row]
+				and physics_world.bubbleBodies[group_row][group_col]
 			then
-				physicsWorld.bubbleBodies[groupRow][groupColumn]:destroy()
-				physicsWorld.bubbleBodies[groupRow][groupColumn] = nil
+				physics_world.bubbleBodies[group_row][group_col]:destroy()
+				physics_world.bubbleBodies[group_row][group_col] = nil
 			end
-			self:addScorePopup(groupColumn, groupRow, 10)
+			self:addScorePopup(group_col, group_row, constants.SCORE_POPUP_VALUE)
 			if _G.SCORE then
-				_G.SCORE = _G.SCORE + 10
+				_G.SCORE = _G.SCORE + constants.SCORE_POPUP_VALUE
 			end
 			self.popping_queue.popped = (self.popping_queue.popped or 0) + 1
 			self.popping_queue.step = self.popping_queue.step + 1
@@ -123,20 +123,20 @@ function Grid:updatePopping(deltaTime, physicsWorld)
 			-- Done popping group, now pop floating if any
 			if self.popping_queue.floating and #self.popping_queue.floating > 0 then
 				local pos = table.remove(self.popping_queue.floating, 1)
-				local groupColumn, groupRow = pos[1], pos[2]
-				self.bubbles[groupRow][groupColumn] = nil
+				local group_col, group_row = pos[1], pos[2]
+				self.bubbles[group_row][group_col] = nil
 				if
-					physicsWorld
-					and physicsWorld.bubbleBodies
-					and physicsWorld.bubbleBodies[groupRow]
-					and physicsWorld.bubbleBodies[groupRow][groupColumn]
+					physics_world
+					and physics_world.bubbleBodies
+					and physics_world.bubbleBodies[group_row]
+					and physics_world.bubbleBodies[group_row][group_col]
 				then
-					physicsWorld.bubbleBodies[groupRow][groupColumn]:destroy()
-					physicsWorld.bubbleBodies[groupRow][groupColumn] = nil
+					physics_world.bubbleBodies[group_row][group_col]:destroy()
+					physics_world.bubbleBodies[group_row][group_col] = nil
 				end
-				self:addScorePopup(groupColumn, groupRow, 10)
+				self:addScorePopup(group_col, group_row, constants.SCORE_POPUP_VALUE)
 				if _G.SCORE then
-					_G.SCORE = _G.SCORE + 10
+					_G.SCORE = _G.SCORE + constants.SCORE_POPUP_VALUE
 				end
 				self.popping_queue.popped = (self.popping_queue.popped or 0) + 1
 			else
@@ -262,7 +262,7 @@ function Grid:checkAndRemoveMatches(column, row, physicsWorld)
 	end
 
 	self.popping_queue =
-		{ group = group, step = 1, timer = 0, floating = floating, current_delay = POP_DELAY, popped = 0 }
+		{ group = group, step = 1, timer = 0, floating = floating, current_delay = constants.POP_DELAY, popped = 0 }
 	return #group + #floating
 end
 

@@ -1,7 +1,6 @@
 -- ──────────────────────────────────────────────────────────
 -- CONSTANTS & CONFIGURATION
-local GRID_COLUMNS, GRID_ROWS = 32, 32 -- grid dimensions
-local TOP_ROW_SPAWN_INTERVAL = 10
+local constants = require("constants")
 
 -- ──────────────────────────────────────────────────────────
 -- LIBS + GLOBALS
@@ -12,33 +11,34 @@ local grid = nil
 local Cannon = require("cannon")
 local cannon = nil
 
-local topRowSpawnTimer = 0
-local gameOverLineY = nil -- will be set in love.load
-local isGameOver = false
+local top_row_spawn_timer = 0
+local game_over_line_y = nil -- will be set in love.load
+local is_game_over = false
 
 SCORE = 0
 
 -- ──────────────────────────────────────────────────────────
 function love.load()
+	-- Set up window and background
 	love.window.setTitle("Bubble Shooter – Grid Test")
 	love.graphics.setBackgroundColor(0.08, 0.08, 0.09)
 
-	local windowWidth, windowHeight = love.graphics.getDimensions()
-	local cellVerticalStep = windowHeight / (GRID_ROWS + 0.5)
-	local cellRadius = cellVerticalStep / math.sqrt(3)
+	local window_width, window_height = love.graphics.getDimensions()
+	local cell_vertical_step = window_height / (constants.GRID_ROWS + 0.5)
+	local cell_radius = cell_vertical_step / math.sqrt(3)
 
 	physicsWorld = windfield.newWorld(0, 0, false) -- No gravity
-	grid = Grid.new(GRID_COLUMNS, GRID_ROWS, cellRadius)
+	grid = Grid.new(constants.GRID_COLUMNS, constants.GRID_ROWS, cell_radius)
 
-	local initialRows = 5 -- change this number to control how many rows appear initially
-	for rowIndex = 2, initialRows do
+	local initial_rows = 5 -- Number of rows to spawn at start
+	for row_index = 2, initial_rows do
 		grid:spawnTopRow(physicsWorld)
 	end
 
-	gameOverLineY = windowHeight - windowHeight / 6
+	game_over_line_y = window_height - window_height * constants.GAME_OVER_LINE_RATIO
 
-	local bubbleColors = grid:getPresentColors()
-	cannon = Cannon:new(windowWidth / 2, windowHeight - 60, bubbleColors, physicsWorld, cellRadius - 2, grid)
+	local bubble_colors = grid:getPresentColors()
+	cannon = Cannon:new(window_width / 2, window_height - 60, bubble_colors, physicsWorld, cell_radius - 2, grid)
 
 	physicsWorld:addCollisionClass("CannonBubble")
 
@@ -49,31 +49,32 @@ function love.load()
 	SOUNDS.shoot = love.audio.newSource("sounds/blip.wav", "static")
 end
 
-function love.update(deltaTime)
+function love.update(delta_time)
 	if physicsWorld then
-		physicsWorld:update(deltaTime)
+		physicsWorld:update(delta_time)
 	end
-	if not isGameOver then
-		topRowSpawnTimer = topRowSpawnTimer + deltaTime
-		if topRowSpawnTimer >= TOP_ROW_SPAWN_INTERVAL then
-			topRowSpawnTimer = topRowSpawnTimer - TOP_ROW_SPAWN_INTERVAL
+	if not is_game_over then
+		top_row_spawn_timer = top_row_spawn_timer + delta_time
+		if top_row_spawn_timer >= constants.TOP_ROW_SPAWN_INTERVAL then
+			top_row_spawn_timer = top_row_spawn_timer - constants.TOP_ROW_SPAWN_INTERVAL
 			if grid and physicsWorld then
 				grid:spawnTopRow(physicsWorld)
 			end
 		end
+		-- Check for game over
 		if grid then
 			for row = 0, (grid.rows or 0) - 1 do
 				for column = 0, (grid.cols or 0) - 1 do
 					local bubble = grid.bubbles and grid.bubbles[row] and grid.bubbles[row][column]
 					if bubble and grid.axialToPixel then
-						local x, y = grid:axialToPixel(column, row)
-						if grid.r and y + grid.r >= gameOverLineY then
-							isGameOver = true
+						local _, y = grid:axialToPixel(column, row)
+						if grid.r and y + grid.r >= game_over_line_y then
+							is_game_over = true
 							break
 						end
 					end
 				end
-				if isGameOver then
+				if is_game_over then
 					break
 				end
 			end
@@ -83,7 +84,7 @@ function love.update(deltaTime)
 	-- Sequential popping
 	local popping, _, just_finished = false, 0, false
 	if grid and grid.updatePopping then
-		popping, _, just_finished = grid:updatePopping(deltaTime, physicsWorld)
+		popping, _, just_finished = grid:updatePopping(delta_time, physicsWorld)
 	end
 
 	if just_finished and love.graphics and love.graphics.present then
@@ -91,7 +92,7 @@ function love.update(deltaTime)
 	end
 
 	if cannon and not popping then
-		cannon:update(deltaTime)
+		cannon:update(delta_time)
 		if cannon.handleWallBounce then
 			cannon:handleWallBounce()
 		end
@@ -101,8 +102,8 @@ function love.update(deltaTime)
 	if grid and grid.score_popups then
 		local to_remove = {}
 		for i, popup in ipairs(grid.score_popups) do
-			popup.timer = popup.timer + deltaTime
-			popup.alpha = 1 - (popup.timer / 0.7)
+			popup.timer = popup.timer + delta_time
+			popup.alpha = 1 - (popup.timer / constants.SCORE_POPUP_DURATION)
 			if popup.alpha <= 0 then
 				table.insert(to_remove, i)
 			end
@@ -138,11 +139,11 @@ function love.draw()
 	-- Draw game over line
 	love.graphics.setColor(1, 0, 0)
 	love.graphics.setLineWidth(3)
-	love.graphics.line(0, gameOverLineY, love.graphics.getWidth(), gameOverLineY)
+	love.graphics.line(0, game_over_line_y, love.graphics.getWidth(), game_over_line_y)
 
-	if isGameOver then
+	if is_game_over then
 		love.graphics.setColor(1, 0, 0)
-		love.graphics.print("GAME OVER", 40, gameOverLineY + 10, 0, 2, 2)
+		love.graphics.print("GAME OVER", 40, game_over_line_y + 10, 0, 2, 2)
 	end
 
 	if cannon then
