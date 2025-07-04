@@ -121,6 +121,10 @@ function Grid:updatePopping(delta_time, physics_world)
 				physics_world.bubbleBodies[group_row][group_col]:destroy()
 				physics_world.bubbleBodies[group_row][group_col] = nil
 			end
+			if _G.SOUNDS and _G.SOUNDS.pop then
+				local s = _G.SOUNDS.pop:clone()
+				s:play()
+			end
 			self:addScorePopup(group_col, group_row, nil) -- value will be set after scoring
 			self.popping_queue.popped = (self.popping_queue.popped or 0) + 1
 			self.popping_queue.step = self.popping_queue.step + 1
@@ -138,6 +142,10 @@ function Grid:updatePopping(delta_time, physics_world)
 				then
 					physics_world.bubbleBodies[group_row][group_col]:destroy()
 					physics_world.bubbleBodies[group_row][group_col] = nil
+				end
+				if _G.SOUNDS and _G.SOUNDS.pop then
+					local s = _G.SOUNDS.pop:clone()
+					s:play()
 				end
 				self:addScorePopup(group_col, group_row, nil)
 				self.popping_queue.popped = (self.popping_queue.popped or 0) + 1
